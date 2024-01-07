@@ -1,6 +1,7 @@
 import process from "process";
 
 const api_key = process.env.API_KEY;
+const firebase_key = process.env.FIREBASE_KEY;
 
 const url = 'https://receitaws.com.br/v1/cnpj/';
 const database_url = 'https://api.brasil.io/v1/dataset/socios-brasil/empresas/data/?search=&cnpj=&uf=SP&page_size=200';
@@ -87,7 +88,7 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, child, get } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCE4Te-C_D5mfhvGCQRhTDslBJ4jHKANuU",
+  apiKey: firebase_key,
   authDomain: "cnpjbycountry.firebaseapp.com",
   projectId: "cnpjbycountry",
   storageBucket: "cnpjbycountry.appspot.com",
@@ -126,3 +127,5 @@ async function db_get(cnpj) {
     console.log(error);
   }
 }
+
+console.log('hello, node');
