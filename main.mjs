@@ -2,12 +2,15 @@ import process from "process";
 
 const api_key = process.env.API_KEY;
 const firebase_key = process.env.FIREBASE_KEY;
+var last_request_time = 0;
+var api_error_count = 0;
 
 const url = 'https://receitaws.com.br/v1/cnpj/';
 const database_url = 'https://api.brasil.io/v1/dataset/socios-brasil/empresas/data/?search=&cnpj=&uf=SP&page_size=200';
 
 function get_email_by_cnpj(cnpj) {
     let data = null;
+    last_request_time = new Date();
 
     fetch(url + cnpj)
       .then(response => {
@@ -38,6 +41,7 @@ function get_email_by_cnpj(cnpj) {
       .catch(error => {
         //console.error('Erro:', error);
         console.log('exception!');
+        api_error_count++;
       });    
 
       return data;
@@ -70,16 +74,21 @@ async function get_database() {
       if(db_d == null) {
         get_email_by_cnpj(data.results[i].cnpj);
         await sleep(15000);
+        console.log((new Date() - last_request_time) + 'ms');
       } else {
-        console.log("exists in fibase! (ignore)");
+        console.log("exists in firebase! (ignore) " + i);
       }
     }
 
     console.log("end all requires");
+    //console.log("api errors " + api_error_count);
   })
   .catch(error => {
-    //console.error('Erro:', error);
+   console.error('Erro:', error);
   });
+
+
+  console.log("api errors " + api_error_count);
 }
 
 get_database();
@@ -110,6 +119,8 @@ function save_data(cnpj, municipio, email) {
     municipio: municipio,
     email: email
   });
+
+  console.log('save in database');
 }
 
 async function db_get(cnpj) {
@@ -127,5 +138,3 @@ async function db_get(cnpj) {
     console.log(error);
   }
 }
-
-console.log('hello, node');
