@@ -1,140 +1,86 @@
 import process from "process";
+import { get_data, set_cnpj } from './services/firebase.mjs';
+import { get_data_from_cnpj } from './services/receita_federal.mjs';
+import { get_cnpjs } from './services/brazil_io.mjs';
 
-const api_key = process.env.API_KEY;
-const firebase_key = process.env.FIREBASE_KEY;
-var last_request_time = 0;
-var api_error_count = 0;
-
-const url = 'https://receitaws.com.br/v1/cnpj/';
-const database_url = 'https://api.brasil.io/v1/dataset/socios-brasil/empresas/data/?search=&cnpj=&uf=SP&page_size=200';
-
-function get_email_by_cnpj(cnpj) {
-    let data = null;
-    last_request_time = new Date();
-
-    fetch(url + cnpj)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Erro na requisição: ${response.status}`);
-        }
-        
-        return response.json();
-      })
-      .then(response_data => {
-        if(response_data != null) {
-          let email = response_data.email;
-
-          save_data(cnpj, response_data.municipio, email);
-            if(response_data.municipio == 'Louveira') {
-                console.log("its work");
-            } else {
-                console.log(response_data.municipio);
-            }
-
-            console.log(response_data.email);
-        } else {
-            console.log("data is null");
-        }
-
-        data = response_data;
-      })
-      .catch(error => {
-        //console.error('Erro:', error);
-        console.log('exception!');
-        api_error_count++;
-      });    
-
-      return data;
-}
+let cnpj_pool = []
+const request_rate = 10000;
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function get_database() {
-    fetch(database_url, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Token ${api_key}`,
-      'Content-Type': 'application/json'
-    }
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`Erro na requisição: ${response.status}`);
-    }
-    
-    return response.json();
-  })
-  .then(async data => {
-    let i = 0;
-    for(; i < 200; i++) {
-      let db_d = await db_get(data.results[i].cnpj);
+async function clear_pool() {
+  for(let i = 0; i < cnpj_pool.length; i++) {
+    let cnpj = cnpj_pool[i];
+    let data = await get_data_from_cnpj(cnpj);
 
-      if(db_d == null) {
-        get_email_by_cnpj(data.results[i].cnpj);
-        await sleep(15000);
-        console.log((new Date() - last_request_time) + 'ms');
-      } else {
-        console.log("exists in firebase! (ignore) " + i);
-      }
+    if(data == null) {
+      await sleep(request_rate);
+      continue;
     }
 
-    console.log("end all requires");
-    //console.log("api errors " + api_error_count);
-  })
-  .catch(error => {
-   console.error('Erro:', error);
-  });
+    await set_cnpj(data.email, data.municipio, cnpj);
+    console.log(`save in database ${cnpj}`);
+    cnpj_pool[i] = null;
 
+    await sleep(request_rate);
+  }
 
-  console.log("api errors " + api_error_count);
-}
+  asort_array();
 
-get_database();
-
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, child, get } from "firebase/database";
-
-const firebaseConfig = {
-  apiKey: firebase_key,
-  authDomain: "cnpjbycountry.firebaseapp.com",
-  projectId: "cnpjbycountry",
-  storageBucket: "cnpjbycountry.appspot.com",
-  messagingSenderId: "159502353043",
-  appId: "1:159502353043:web:5a99508f8d2aa9fe95c366",
-  measurementId: "G-K4JXSDZB9V"
-};
-
-const app = initializeApp(firebaseConfig);
-
-const database = getDatabase(app);
-
-function save_data(cnpj, municipio, email) {
-  let database = getDatabase();
-
-  //console.log(email);
-
-  set(ref(database, cnpj), {
-    municipio: municipio,
-    email: email
-  });
-
-  console.log('save in database');
-}
-
-async function db_get(cnpj) {
-  const dbRef = ref(getDatabase());
-  
-  try {
-    const snapshot = await get(child(dbRef, cnpj));
-
-    if(snapshot.exists()) {
-      return snapshot.val();
-    }
-
-    return null;
-  } catch(error) {
-    console.log(error);
+  if(cnpj_pool.length > 0) {
+    console.log(`init pool, length: ${cnpj_pool.length}`)
+    await clear_pool();
+  } else {
+    console.log('end page');
+    process.exit();
   }
 }
+
+function asort_array() {
+  for(let i = 0; i < cnpj_pool.length; i++) {
+    if(cnpj_pool[i] == null) {
+      cnpj_pool.splice(i, 1);
+      i--;
+    }
+  }
+}
+
+async function main() {
+  const size = 200;
+  const cnpjs = await get_cnpjs('SP', 2, size);
+
+  for(let i = 0; i < size; i++) {
+    let cnpj = cnpjs[i].cnpj;
+
+    if(await get_data(cnpj) == null) {
+      let data = await get_data_from_cnpj(cnpj);
+
+      if(data == null) {
+        cnpj_pool.push(cnpj);
+        await sleep(request_rate);
+
+        continue;
+      }
+
+      await set_cnpj(data.email, data.municipio, cnpj);
+      console.log(`save in database ${cnpj}`);
+
+      await sleep(request_rate);
+    } else {
+      console.log(`exist in database ${i}`);
+    }
+  }
+
+  if(cnpj_pool.length > 0) {
+    console.log(`init pool, length: ${cnpj_pool.length}`); 
+
+    await clear_pool();
+  }
+
+  console.log('end page');
+  process.exit();
+}
+
+main();

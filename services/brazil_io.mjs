@@ -1,10 +1,10 @@
-const process = require('process');
+import process from 'process';
 
 const api_key = process.env.API_KEY;
 const base_url = 'https://api.brasil.io/v1/dataset/socios-brasil/empresas/data/';
 
-async function get_cnpjs(state, size) {
-  let compose_url = `${base_url}?search=&cnpj=&uf=${state}&page_size=${size}`;
+export async function get_cnpjs(state, page, size) {
+  let compose_url = `${base_url}?search=&cnpj=&uf=${state}&page=${page}&page_size=${size}`;
 
   let request = await fetch(compose_url, {
     method: 'GET',
@@ -32,8 +32,5 @@ async function get_cnpjs(state, size) {
     return null;
   });
 
-  console.log(request.results);
   return request?.results;
 }
-
-get_cnpjs('SP', 200);
